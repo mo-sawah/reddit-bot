@@ -37,7 +37,7 @@ class RedditBot_API {
             RedditBot_Logger::info('reddit_api', 'Successfully authenticated with Reddit');
             return true;
         } else {
-            RedditBot_Logger::error('reddit_api', 'Failed to authenticate with Reddit');
+            RedditBot_Logger::error('reddit_api', 'Failed to authenticate with Reddit: ' . print_r($response, true));
             return false;
         }
     }
@@ -66,30 +66,54 @@ class RedditBot_API {
     
     public function post_comment($post_fullname, $comment_text) {
         if (!$this->access_token && !$this->authenticate()) {
+            RedditBot_Logger::error('reddit_api', 'Cannot authenticate for comment posting');
             return false;
         }
         
-        $url = 'https://oauth.reddit.com/api/comment';
+        // FIXED: Use the non-OAuth URL for comment posting
+        $url = 'https://www.reddit.com/api/comment';
         
+        // Ensure we have the correct fullname format
+        if (!strpos($post_fullname, 't3_') === 0) {
+            $post_fullname = 't3_' . $post_fullname;
+        }
+        
+        // FIXED: Use correct parameter names based on documentation
         $post_data = array(
-            'thing_id' => $post_fullname,
+            'thing_id' => $post_fullname,  // Correct parameter name
             'text' => $comment_text,
             'api_type' => 'json'
         );
         
         $headers = array(
             'Authorization: Bearer ' . $this->access_token,
-            'User-Agent: ' . $this->user_agent
+            'User-Agent: ' . $this->user_agent,
+            'Content-Type: application/x-www-form-urlencoded'
         );
+        
+        RedditBot_Logger::info('reddit_api', "Attempting to post comment to: $post_fullname");
         
         $response = $this->make_request($url, $post_data, $headers);
         
-        if ($response && isset($response['json']['errors']) && empty($response['json']['errors'])) {
-            RedditBot_Logger::info('reddit_api', "Successfully posted comment to: $post_fullname");
-            return true;
+        // Enhanced response handling
+        if ($response) {
+            RedditBot_Logger::info('reddit_api', 'Raw API response: ' . print_r($response, true));
+            
+            if (isset($response['json'])) {
+                if (isset($response['json']['errors']) && empty($response['json']['errors'])) {
+                    RedditBot_Logger::info('reddit_api', "Successfully posted comment to: $post_fullname");
+                    return true;
+                } else {
+                    $errors = isset($response['json']['errors']) ? $response['json']['errors'] : array('Unknown error');
+                    RedditBot_Logger::error('reddit_api', "Reddit API errors: " . print_r($errors, true));
+                    return false;
+                }
+            } else {
+                RedditBot_Logger::error('reddit_api', "Unexpected response format: " . print_r($response, true));
+                return false;
+            }
         } else {
-            $error = isset($response['json']['errors'][0]) ? $response['json']['errors'][0] : 'Unknown error';
-            RedditBot_Logger::error('reddit_api', "Failed to post comment: " . print_r($error, true));
+            RedditBot_Logger::error('reddit_api', "No response received for comment post to: $post_fullname");
             return false;
         }
     }
@@ -99,7 +123,9 @@ class RedditBot_API {
             return false;
         }
         
-        $url = "https://oauth.reddit.com/comments/{$post_id}";
+        // Remove t3_ prefix if present for this endpoint
+        $clean_id = str_replace('t3_', '', $post_id);
+        $url = "https://oauth.reddit.com/comments/{$clean_id}";
         
         $headers = array(
             'Authorization: Bearer ' . $this->access_token,
@@ -124,7 +150,8 @@ class RedditBot_API {
             CURLOPT_TIMEOUT => 30,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_USERAGENT => $this->user_agent
+            CURLOPT_USERAGENT => $this->user_agent,
+            CURLOPT_FOLLOWLOCATION => true
         ));
         
         if ($post_data) {
@@ -135,12 +162,16 @@ class RedditBot_API {
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
+        $info = curl_getinfo($ch);
         curl_close($ch);
         
+        // Enhanced logging
         if ($error) {
             RedditBot_Logger::error('reddit_api', "cURL error: $error");
             return false;
         }
+        
+        RedditBot_Logger::info('reddit_api', "HTTP Code: $http_code, URL: $url");
         
         if ($http_code >= 400) {
             RedditBot_Logger::error('reddit_api', "HTTP error: $http_code - Response: $response");
@@ -150,7 +181,7 @@ class RedditBot_API {
         $decoded = json_decode($response, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            RedditBot_Logger::error('reddit_api', "JSON decode error: " . json_last_error_msg());
+            RedditBot_Logger::error('reddit_api', "JSON decode error: " . json_last_error_msg() . " - Raw response: $response");
             return false;
         }
         
@@ -159,7 +190,6 @@ class RedditBot_API {
     
     public function test_connection() {
         if ($this->authenticate()) {
-            // Try to get user info as a test
             $headers = array(
                 'Authorization: Bearer ' . $this->access_token,
                 'User-Agent: ' . $this->user_agent

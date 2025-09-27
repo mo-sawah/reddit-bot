@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Reddit Traffic Bot
  * Description: Generate traffic by posting contextual comments on Reddit using AI
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Your Name
  * Text Domain: reddit-bot
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('REDDIT_BOT_VERSION', '1.0.2');
+define('REDDIT_BOT_VERSION', '1.0.3');
 define('REDDIT_BOT_PATH', plugin_dir_path(__FILE__));
 define('REDDIT_BOT_URL', plugin_dir_url(__FILE__));
 
