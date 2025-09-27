@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Reddit Traffic Bot
  * Description: Generate traffic by posting contextual comments on Reddit using AI
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Your Name
  * Text Domain: reddit-bot
  */
@@ -13,12 +13,16 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('REDDIT_BOT_VERSION', '1.0.1');
+define('REDDIT_BOT_VERSION', '1.0.2');
 define('REDDIT_BOT_PATH', plugin_dir_path(__FILE__));
 define('REDDIT_BOT_URL', plugin_dir_url(__FILE__));
 
-// Load the activator class immediately (before activation hook)
-require_once REDDIT_BOT_PATH . 'includes/class-activator.php';
+// Check if activator file exists before including it
+$activator_file = REDDIT_BOT_PATH . 'includes/class-activator.php';
+if (!file_exists($activator_file)) {
+    wp_die('Reddit Bot Error: Activator file not found at: ' . $activator_file);
+}
+require_once $activator_file;
 
 // Main plugin class
 class RedditBot {
@@ -26,7 +30,7 @@ class RedditBot {
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
-        add_action('init', array($this, 'init'));
+        add_action('plugins_loaded', array($this, 'init'));
     }
     
     public function init() {
@@ -40,30 +44,39 @@ class RedditBot {
     }
     
     private function load_dependencies() {
-        // Core classes
-        require_once REDDIT_BOT_PATH . 'includes/class-logger.php';
-        require_once REDDIT_BOT_PATH . 'includes/class-queue.php';
-        require_once REDDIT_BOT_PATH . 'includes/class-cron.php';
+        $files = array(
+            'includes/class-logger.php',
+            'includes/class-queue.php', 
+            'includes/class-cron.php',
+            'reddit/class-reddit-api.php',
+            'reddit/class-reddit-auth.php',
+            'reddit/class-reddit-monitor.php',
+            'ai/class-openrouter.php',
+            'ai/class-comment-generator.php',
+            'config/defaults.php'
+        );
         
-        // Reddit integration
-        require_once REDDIT_BOT_PATH . 'reddit/class-reddit-api.php';
-        require_once REDDIT_BOT_PATH . 'reddit/class-reddit-auth.php';
-        require_once REDDIT_BOT_PATH . 'reddit/class-reddit-monitor.php';
+        foreach ($files as $file) {
+            $filepath = REDDIT_BOT_PATH . $file;
+            if (file_exists($filepath)) {
+                require_once $filepath;
+            } else {
+                error_log("Reddit Bot: Missing file: $filepath");
+            }
+        }
         
-        // AI integration
-        require_once REDDIT_BOT_PATH . 'ai/class-openrouter.php';
-        require_once REDDIT_BOT_PATH . 'ai/class-comment-generator.php';
-        
-        // Config helper
-        require_once REDDIT_BOT_PATH . 'config/defaults.php';
-        
-        // Admin interface (only when needed)
         if (is_admin()) {
-            require_once REDDIT_BOT_PATH . 'admin/class-admin.php';
+            $admin_file = REDDIT_BOT_PATH . 'admin/class-admin.php';
+            if (file_exists($admin_file)) {
+                require_once $admin_file;
+            }
         }
     }
     
     public function activate() {
+        if (!class_exists('RedditBot_Activator')) {
+            wp_die('Reddit Bot Error: Activator class not loaded properly.');
+        }
         RedditBot_Activator::activate();
     }
     
